@@ -1,0 +1,6 @@
+{
+  "name": "generaticMed",
+  "description": "Smart generic medicine price comparison, online prescription fulfillment, and enterprise multi-seller marketplace operations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
