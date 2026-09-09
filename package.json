@@ -5,13 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
-    "build": "cd frontend && npm install && npm run build",
+    "postinstall": "npm install --prefix frontend",
+    "build": "npm run build --prefix frontend",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "server": "tsx server/index.ts",
-    "seed": "tsx server/seed.ts",
-    "start": "cd backend && npm install && npm run start"
+    "start": "npm run start --prefix backend"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
