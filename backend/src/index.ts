@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import dotenv from 'dotenv';
+import { connectDatabase, closeDatabase, getDatabase } from './db';
 import { 
   Drug, 
   DrugOffer, 
@@ -49,7 +50,7 @@ app.get('/api/v1/health', (req: Request, res: Response) => {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     uptimeSeconds: Math.floor(process.uptime()),
-    database: 'PostgreSQL Multi-Tenant (Connected/Active)',
+    database: getDatabase() ? 'MongoDB (Connected/Active)' : 'MongoDB (Not configured)',
     geminiOcrEnabled: Boolean(process.env.GEMINI_API_KEY),
     activeStoresCount: mockStores.length,
     canonicalDrugsCount: canonicalCatalog.length,
@@ -770,10 +771,19 @@ app.get('/api/v1/inventory/forecast', requireEnterpriseAuth, (req: Request, res:
 
 // Start Server
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
-    console.log(`[generaticMed API] Production Express Server running on port ${PORT}`);
-    console.log(`[generaticMed API] Health check: http://localhost:${PORT}/api/v1/health`);
-    console.log(`[generaticMed API] Gemini 2.0 OCR Engine: ${process.env.GEMINI_API_KEY ? 'Active' : 'Offline Simulated Matcher'}`);
+  connectDatabase()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`[generaticMed API] Server running on port ${PORT}`);
+      });
+    })
+    .catch((error: unknown) => {
+      console.error('[generaticMed API] MongoDB connection failed:', error instanceof Error ? error.message : 'unknown error');
+      process.exitCode = 1;
+    });
+
+  process.on('SIGINT', () => {
+    closeDatabase().finally(() => process.exit(0));
   });
 }
 
