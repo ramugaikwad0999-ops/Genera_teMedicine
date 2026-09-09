@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Drug, DrugOffer } from '../../types';
 import { 
   ArrowLeft, 
@@ -40,6 +40,12 @@ export const CompareView: React.FC<CompareViewProps> = ({
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const [selectedOffer, setSelectedOffer] = useState<DrugOffer>(offers[0] || null);
+
+  useEffect(() => {
+    if (offers.length > 0) {
+      setSelectedOffer(offers[0]);
+    }
+  }, [drug.id, offers]);
 
   // Filter offers
   const filteredOffers = offers.filter((offer) => {
@@ -428,7 +434,7 @@ export const CompareView: React.FC<CompareViewProps> = ({
                 <span className="text-xl font-black text-slate-900">${selectedOffer.price.toFixed(2)}</span>
                 <span className="text-xs text-slate-400 line-through">${selectedOffer.retailPrice.toFixed(2)}</span>
                 <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded">
-                  Save 78%
+                  Save {selectedOffer.retailPrice > 0 ? Math.round(((selectedOffer.retailPrice - selectedOffer.price) / selectedOffer.retailPrice) * 100) : 0}%
                 </span>
               </div>
             </div>

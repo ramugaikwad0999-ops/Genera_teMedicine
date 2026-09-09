@@ -411,6 +411,48 @@ export const mockMetforminOffers: DrugOffer[] = [
   },
 ];
 
+export const getOffersForDrug = (drug: Drug): DrugOffer[] => {
+  if (drug.id === 'metformin-500-er') {
+    return mockMetforminOffers;
+  }
+
+  const packagingDesc = `${drug.standardQuantity} ${drug.dosageUnit.charAt(0).toUpperCase() + drug.dosageUnit.slice(1)} (1 Month Supply)`;
+  const multipliers = [1.0, 1.38, 1.55, 2.15, 2.65, 3.05];
+  const stockCounts = [310, 180, 95, 840, 620, 35];
+  const deliveryOptions: ('same_day' | 'next_day' | 'pickup_only')[] = [
+    'same_day',
+    'same_day',
+    'next_day',
+    'same_day',
+    'same_day',
+    'next_day',
+  ];
+  const deliveryFees = [0, 1.99, 0, 2.99, 2.99, 3.50];
+
+  return mockStores.map((store, idx) => {
+    const rawPrice = drug.lowestPrice * (multipliers[idx] || 1.0);
+    const price = Math.round(rawPrice * 100) / 100;
+    const isLowest = idx === 0;
+
+    return {
+      id: `offer-${drug.id}-${store.id}`,
+      drugId: drug.id,
+      storeId: store.id,
+      store,
+      price,
+      retailPrice: drug.maxRetailPrice,
+      stockCount: stockCounts[idx] || 100,
+      inStock: true,
+      packaging: packagingDesc,
+      deliveryOption: deliveryOptions[idx] || 'same_day',
+      deliveryFee: deliveryFees[idx] || 0,
+      isLowestPrice: isLowest,
+      isBestMatch: isLowest,
+      updatedSecondsAgo: (idx + 1) * 7,
+    };
+  });
+};
+
 export const mockInitialOrder: Order = {
   id: 'ord-89210',
   orderNumber: 'GM-89210',

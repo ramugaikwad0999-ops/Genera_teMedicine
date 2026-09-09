@@ -12,9 +12,11 @@ import {
   mockDrugs, 
   mockStores, 
   mockMetforminOffers, 
-  mockInitialOrder 
+  mockInitialOrder,
+  getOffersForDrug
 } from './data/mockData';
 import { Navigation } from './components/Navigation';
+import { submitOrderCheckout } from './services/api';
 import { ExploreView } from './components/patient/ExploreView';
 import { CompareView } from './components/patient/CompareView';
 import { CartView } from './components/patient/CartView';
@@ -91,8 +93,12 @@ export default function App() {
   // Order state initialized with mock order
   const [order, setOrder] = useState<Order>(mockInitialOrder);
 
+  // Computed active offers for the selected drug
+  const activeOffers = React.useMemo(() => getOffersForDrug(selectedDrug), [selectedDrug]);
+
   // Cart Handlers
-  const handleAddToCart = (offer: DrugOffer) => {
+  const handleAddToCart = (offer: DrugOffer, drugToUse?: Drug) => {
+    const drug = drugToUse || mockDrugs.find((d) => d.id === offer.drugId) || selectedDrug;
     const existingIndex = cart.findIndex((item) => item.offer.id === offer.id);
     if (existingIndex > -1) {
       setCart((prev) =>
@@ -104,7 +110,7 @@ export default function App() {
       setCart((prev) => [
         ...prev,
         {
-          drug: selectedDrug,
+          drug,
           offer,
           quantity: 1,
           prescriptionNumber: 'RX-' + Math.floor(10000 + Math.random() * 90000),
@@ -138,8 +144,9 @@ export default function App() {
   // Quick Refill Handler
   const handleQuickRefill = (drug: Drug) => {
     setSelectedDrug(drug);
-    const offer = mockMetforminOffers[0];
-    handleAddToCart(offer);
+    const offers = getOffersForDrug(drug);
+    const bestOffer = offers[0] || mockMetforminOffers[0];
+    handleAddToCart(bestOffer, drug);
     setPatientTab('cart');
   };
 
@@ -190,7 +197,16 @@ export default function App() {
     };
 
     setOrder(newOrder);
+    setCart([]);
     setPatientTab('orders');
+
+    // Asynchronous synchronization with Phase 2 Express API
+    submitOrderCheckout({
+      cart,
+      fulfillmentMethod: 'delivery',
+      deliveryAddress: '742 Evergreen Terrace, Springfield, IL 62704',
+      selectedStoreId: cart[0]?.offer.storeId,
+    }).catch((e) => console.warn('Background sync order checkout:', e));
   };
 
   // Navigate to dispute desk from tracking
@@ -267,7 +283,7 @@ export default function App() {
                 {patientTab === 'compare' && (
                   <CompareView
                     drug={selectedDrug}
-                    offers={mockMetforminOffers}
+                    offers={activeOffers}
                     onBack={() => setPatientTab('explore')}
                     onAddToCart={handleAddToCart}
                     isOfferInCart={isOfferInCart}
@@ -383,7 +399,9 @@ export default function App() {
             <CanonicalCatalogView drugs={mockDrugs} />
           )}
 
-          {enterpriseTab === 'store_ops' && <StoreOperationsView />}
+          {enterpriseTab === 'store_ops' && (
+            <StoreOperationsView activeOrder={order} />
+          )}
 
           {enterpriseTab === 'disputes' && <DisputeResolutionView />}
 

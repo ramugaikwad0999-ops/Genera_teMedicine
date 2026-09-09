@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { Order } from '../../types';
 import { 
   CheckCircle2, 
   AlertTriangle, 
@@ -15,10 +16,18 @@ import {
   Clock, 
   Printer, 
   Check,
-  TrendingUp
+  TrendingUp,
+  Scale,
+  Usb,
+  Cpu
 } from 'lucide-react';
+import { recordToteHardwareScan } from '../../services/api';
 
-export const StoreOperationsView: React.FC = () => {
+interface StoreOperationsViewProps {
+  activeOrder?: Order | null;
+}
+
+export const StoreOperationsView: React.FC<StoreOperationsViewProps> = ({ activeOrder }) => {
   const [isAcceptingOrders, setIsAcceptingOrders] = useState(true);
   const [activeSubTab, setActiveSubTab] = useState<'price_desk' | 'dispense_queue' | 'tote_scanner'>('price_desk');
   
@@ -104,6 +113,25 @@ export const StoreOperationsView: React.FC = () => {
   const [scanInput, setScanInput] = useState('SEAL-8910-A');
   const [scanResult, setScanResult] = useState<any>(null);
 
+  useEffect(() => {
+    if (activeOrder && !dispenseQueue.some((q) => q.orderNumber === activeOrder.orderNumber)) {
+      const itemsSummary = activeOrder.items.map((it) => `${it.drugName} (${it.quantity} tabs)`).join(' + ');
+      setDispenseQueue((prev) => [
+        {
+          id: `q-${activeOrder.id}`,
+          orderNumber: activeOrder.orderNumber,
+          patientName: activeOrder.patientName,
+          items: itemsSummary,
+          total: `$${activeOrder.total.toFixed(2)}`,
+          status: 'Dispensed & Sealed',
+          sealId: activeOrder.rfidSealNumber || 'Pending',
+          courier: `${activeOrder.courierName} (${activeOrder.estimatedArrival})`,
+        },
+        ...prev,
+      ]);
+    }
+  }, [activeOrder]);
+
   // Buy box simulator state
   const [simPrice, setSimPrice] = useState<number>(3.50);
 
@@ -138,15 +166,27 @@ export const StoreOperationsView: React.FC = () => {
     );
   };
 
-  const handleScanBarcode = () => {
-    if (scanInput.trim().toUpperCase() === 'SEAL-8910-A') {
+  // Digital tare scale state (Phase 3)
+  const [tareWeight, setTareWeight] = useState<number>(240.2);
+  const [isCalibratingScale, setIsCalibratingScale] = useState<boolean>(false);
+
+  const handleScanBarcode = async () => {
+    const seal = scanInput.trim().toUpperCase() || 'SEAL-8910-A';
+    if (seal === 'SEAL-8910-A' || seal.startsWith('SEAL-')) {
+      const hwRes = await recordToteHardwareScan({
+        orderId: 'GM-89210',
+        rfidSealNumber: seal,
+        tareWeightGrams: tareWeight,
+      });
+
       setScanResult({
         valid: true,
-        seal: 'SEAL-8910-A',
+        seal,
         orderNumber: 'GM-89210',
-        timestamp: '1:35:12 PM',
+        timestamp: new Date().toLocaleTimeString(),
         pharmacist: 'Dr. Helen Zhao, PharmD (Lic #IL-78920)',
         tamperIntegrity: '100% Intact • Cryptographic Hash: 0x9f4a...e12',
+        tareAudit: `${hwRes.tareWeightGrams}g (Baseline: 240.0g • Delta: ${hwRes.varianceGrams}g • PASS)`,
       });
     } else {
       setScanResult({
@@ -501,7 +541,56 @@ export const StoreOperationsView: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex space-x-2 pt-2">
+          {/* Phase 3: Digital Tare Scale Hardware Station */}
+          <div className="bg-slate-900 text-white p-4 rounded-xl border border-slate-800 space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <div className="flex items-center space-x-2">
+                <Scale className="w-4 h-4 text-emerald-400" />
+                <span className="font-bold text-xs uppercase tracking-wide text-slate-200">
+                  Digital Tare Scale Station (USB / Serial)
+                </span>
+              </div>
+              <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-bold border border-emerald-500/30">
+                <Usb className="w-3 h-3 text-emerald-400" />
+                <span>COM3 • 9600 BAUD</span>
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Live Gross Weight</span>
+                <div className="font-mono text-2xl font-black text-emerald-400 tracking-wider">
+                  {isCalibratingScale ? 'CALIBRATING...' : `${tareWeight.toFixed(1)} g`}
+                </div>
+                <span className="text-[10px] text-slate-400 block mt-0.5">
+                  Target Dispatch: 240.0g ± 2.5g (Pass/Fail Gate)
+                </span>
+              </div>
+
+              <div className="flex flex-col space-y-1.5">
+                <button
+                  onClick={() => {
+                    setIsCalibratingScale(true);
+                    setTimeout(() => {
+                      setIsCalibratingScale(false);
+                      setTareWeight(240.0);
+                    }, 600);
+                  }}
+                  className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold transition-colors border border-slate-700"
+                >
+                  Zero / Tare Scale
+                </button>
+                <button
+                  onClick={() => setTareWeight(240.2)}
+                  className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold transition-colors border border-slate-700"
+                >
+                  Sample Pill Pack (240.2g)
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex space-x-2 pt-1">
             <input
               type="text"
               value={scanInput}
@@ -511,9 +600,10 @@ export const StoreOperationsView: React.FC = () => {
             />
             <button
               onClick={handleScanBarcode}
-              className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+              className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center space-x-1.5"
             >
-              Verify Seal
+              <Barcode className="w-4 h-4" />
+              <span>Verify & Log Weight</span>
             </button>
           </div>
 
@@ -535,6 +625,11 @@ export const StoreOperationsView: React.FC = () => {
                     <div>Order: <strong>{scanResult.orderNumber}</strong></div>
                     <div>Timestamp: <strong>{scanResult.timestamp}</strong></div>
                     <div className="col-span-2">Affixed By: <strong>{scanResult.pharmacist}</strong></div>
+                    {scanResult.tareAudit && (
+                      <div className="col-span-2 bg-emerald-100/60 p-1.5 rounded-lg font-mono text-[10px] text-emerald-900">
+                        ⚖️ Tare Audit: <strong>{scanResult.tareAudit}</strong>
+                      </div>
+                    )}
                     <div className="col-span-2 font-mono text-[10px] text-emerald-700">{scanResult.tamperIntegrity}</div>
                   </div>
                 </>

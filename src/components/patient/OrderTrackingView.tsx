@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Order } from '../../types';
 import { 
   CheckCircle2, 
@@ -9,13 +9,14 @@ import {
   ShieldCheck, 
   AlertTriangle, 
   Download, 
-  ChevronRight, 
   Car, 
   Building2, 
-  Pill,
-  Sparkles,
-  Barcode
+  Barcode,
+  Lock,
+  Radio,
+  Gauge
 } from 'lucide-react';
+import { fetchCourierTelemetry, clawbackEscrowHold } from '../../services/api';
 
 interface OrderTrackingViewProps {
   order: Order;
@@ -29,7 +30,41 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
   onSwitchToEnterpriseDisputes,
 }) => {
   const [downloadingPdf, setDownloadingPdf] = useState(false);
-  const [showCallModal, setShowCallModal] = useState(false);
+  const [isEscrowFrozen, setIsEscrowFrozen] = useState(false);
+  const [telemetry, setTelemetry] = useState({
+    speedMph: 24.5,
+    distanceRemainingMiles: 0.8,
+    etaMinutes: 6,
+    batteryPercent: 94,
+    coordinates: { latitude: 39.7817, longitude: -89.6501 }
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    const interval = setInterval(async () => {
+      const data = await fetchCourierTelemetry(order.id);
+      if (isMounted && data) {
+        setTelemetry({
+          speedMph: data.speedMph,
+          distanceRemainingMiles: data.distanceRemainingMiles,
+          etaMinutes: data.etaMinutes,
+          batteryPercent: data.batteryPercent,
+          coordinates: data.coordinates,
+        });
+      }
+    }, 4000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [order.id]);
+
+  const handleReportTamper = async () => {
+    setIsEscrowFrozen(true);
+    await clawbackEscrowHold(`esc_${order.id}`, 'Customer Reported Tampered RFID Seal');
+    onOpenDispute();
+  };
 
   const handleDownloadInvoice = () => {
     setDownloadingPdf(true);
@@ -119,6 +154,18 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
             />
           </svg>
 
+          {/* Live Telemetry Floating HUD */}
+          <div className="absolute top-2 left-2 flex items-center space-x-2 z-10">
+            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-slate-900/90 border border-slate-700 text-[10px] font-mono text-emerald-400">
+              <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
+              <span>LIVE GPS • {telemetry.speedMph} MPH</span>
+            </span>
+            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-slate-900/90 border border-slate-700 text-[10px] font-mono text-blue-300">
+              <Gauge className="w-3 h-3 text-blue-400" />
+              <span>{telemetry.distanceRemainingMiles} MI REMAINING</span>
+            </span>
+          </div>
+
           {/* Hub Pin */}
           <div className="absolute left-8 bottom-6 flex items-center space-x-1.5 bg-slate-900/90 backdrop-blur-xs px-2.5 py-1 rounded-lg border border-slate-700 text-[11px]">
             <Building2 className="w-3.5 h-3.5 text-blue-400" />
@@ -140,9 +187,50 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
               </div>
             </div>
             <span className="mt-1 px-1.5 py-0.5 rounded bg-slate-900/95 border border-slate-700 text-[10px] font-bold text-blue-300 shadow">
-              Leo G. (2.1 mi)
+              {order.courierName} ({telemetry.distanceRemainingMiles} mi)
             </span>
           </div>
+        </div>
+
+        {/* Stripe Connect Escrow Vault Card (Phase 3) */}
+        <div className={`mt-3 p-3 rounded-xl border text-xs transition-colors ${
+          isEscrowFrozen
+            ? 'bg-rose-50 border-rose-200 text-rose-900'
+            : 'bg-indigo-50/60 border-indigo-200/80 text-indigo-950'
+        }`}>
+          <div className="flex items-center justify-between border-b border-indigo-200/50 pb-2">
+            <div className="flex items-center space-x-1.5 font-bold">
+              <Lock className={`w-3.5 h-3.5 ${isEscrowFrozen ? 'text-rose-600' : 'text-indigo-600'}`} />
+              <span>Stripe Connect Escrow Vault</span>
+            </div>
+            <span className={`font-mono text-[10px] font-bold px-2 py-0.5 rounded-full ${
+              isEscrowFrozen 
+                ? 'bg-rose-600 text-white' 
+                : 'bg-indigo-100 text-indigo-800'
+            }`}>
+              {isEscrowFrozen ? 'ESCROW_FROZEN_CLAWBACK' : 'FUNDS_HELD_IN_VAULT'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 pt-2 text-[11px]">
+            <div>
+              <span className="text-slate-500 block text-[10px]">Pharmacy (82%)</span>
+              <span className="font-bold text-slate-800">${(order.total * 0.82).toFixed(2)}</span>
+            </div>
+            <div>
+              <span className="text-slate-500 block text-[10px]">Courier (12%)</span>
+              <span className="font-bold text-slate-800">${(order.total * 0.12).toFixed(2)}</span>
+            </div>
+            <div>
+              <span className="text-slate-500 block text-[10px]">Platform Fee (6%)</span>
+              <span className="font-bold text-slate-800">${(order.total * 0.06).toFixed(2)}</span>
+            </div>
+          </div>
+          <p className="text-[10px] text-slate-500 mt-2">
+            {isEscrowFrozen
+              ? 'Funds frozen due to reported tamper flag. Clawback to customer initiated.'
+              : 'Auto-settles into pharmacy & courier accounts 24 hours post-handover.'}
+          </p>
         </div>
 
         {/* Courier Contact Card */}
@@ -263,11 +351,11 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
         {/* Dispute Button */}
         <div className="flex flex-wrap gap-2 pt-1">
           <button
-            onClick={onOpenDispute}
-            className="flex-1 py-2 px-3 rounded-xl bg-rose-600/90 hover:bg-rose-600 text-white text-xs font-bold transition-all text-center flex items-center justify-center space-x-1.5"
+            onClick={handleReportTamper}
+            className="flex-1 py-2 px-3 rounded-xl bg-rose-600/90 hover:bg-rose-600 text-white text-xs font-bold transition-all text-center flex items-center justify-center space-x-1.5 shadow-xs active:scale-[0.98]"
           >
             <AlertTriangle className="w-3.5 h-3.5" />
-            <span>Report Broken Seal / File Dispute</span>
+            <span>Report Broken Seal / Instant Escrow Freeze</span>
           </button>
 
           {onSwitchToEnterpriseDisputes && (
@@ -286,7 +374,9 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
       <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs">
         <div className="flex items-center justify-between border-b border-slate-100 pb-2">
           <h3 className="font-bold text-slate-900">Prescription Contents</h3>
-          <span className="font-semibold text-slate-500">2 Medications</span>
+          <span className="font-semibold text-slate-500">
+            {order.items.length} {order.items.length === 1 ? 'Medication' : 'Medications'}
+          </span>
         </div>
 
         <div className="divide-y divide-slate-100">
