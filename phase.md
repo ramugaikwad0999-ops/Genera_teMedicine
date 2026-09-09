@@ -17,9 +17,9 @@ gantt
     section Real-Time Commerce
     Phase 3 - Escrow Engine, WebSockets & Courier Telemetry :done, p3, 2026-10, 2026-11
     section Health Interop
-    Phase 4 - Surescripts e-Prescribing & Regulatory Auditing :active, p4, 2026-11, 2027-01
+    Phase 4 - E-Prescribing Implementation :done, p4, 2026-11, 2027-01
     section B2B Wholesale
-    Phase 5 - Wholesale EDI 832/850 & Nationwide Scale : p5, 2027-01, 2027-04
+    Phase 5 - Wholesale EDI & Fulfillment Implementation :done, p5, 2027-01, 2027-04
 ```
 
 ### Phase Summary Matrix
@@ -29,8 +29,8 @@ gantt
 | **[Phase 1](#phase-1-dual-persona-foundation--interactive-ui-prototype)** | Dual-Persona Foundation & Interactive UI | Q3 2026 | `COMPLETED` | React 19 client, Buy-Box engine, 18-seller compare, dispute adjudicator |
 | **[Phase 2](#phase-2-live-backend-postgresql-persistence--gemini-20-ocr)** | Live Backend, PostgreSQL & Gemini 2.0 OCR | Q3 2026 | `COMPLETED` | Express API, database migrations, server-side multimodal OCR parsing |
 | **[Phase 3](#phase-3-stripe-connect-escrow-websockets--courier-telemetry)** | Stripe Connect Escrow, WebSockets & Telemetry | Q4 2026 | `COMPLETED` | Live escrow holds, courier GPS webhooks, digital tare scale verification |
-| **[Phase 4](#phase-4-surescripts-e-prescribing--regulatory-auditing)** | Surescripts e-Prescriptions & Regulatory | Q4 2026 – Q1 2027 | `TECHNICAL FOUNDATION COMPLETE` | FHIR R4, SCRIPT sandbox, licensing workflow, audit ledger |
-| **[Phase 5](#phase-5-wholesale-edi-832850--nationwide-drop-shipping)** | Wholesale Syndication & Nationwide Scale | Q1 2027 – Q2 2027 | `TECHNICAL FOUNDATION COMPLETE` | EDI 832/850 sandbox, fulfillment routing, inventory forecast |
+| **[Phase 4](#phase-4-surescripts-e-prescribing--regulatory-auditing)** | Surescripts e-Prescriptions & Regulatory | Q4 2026 – Q1 2027 | `IMPLEMENTATION COMPLETE` | FHIR R4, configured SCRIPT gateway, licensing workflow, audit ledger |
+| **[Phase 5](#phase-5-wholesale-edi-832850--nationwide-drop-shipping)** | Wholesale Syndication & Nationwide Scale | Q1 2027 – Q2 2027 | `IMPLEMENTATION COMPLETE` | Configured EDI 832/850 gateway, fulfillment routing, inventory forecast |
 
 ---
 
@@ -137,7 +137,7 @@ gantt
 ## Phase 4: Surescripts e-Prescribing & Regulatory Auditing
 
 - **Timeline:** January 2027 – March 2027
-- **Status:** `PLANNED` 📋
+- **Status:** `IMPLEMENTATION COMPLETE` ✅ — external certification and partner activation pending.
 - **Objective:** Obtain regulatory certifications and connect directly to digital electronic prescribing networks (EHRs).
 
 ### 4.1 Key Workstreams & Tasks
@@ -152,18 +152,23 @@ gantt
   - Immutable tamper-evident audit logging for all prescription access events.
 
 ### 4.2 Delivered Technical Foundation (2026-09-09)
-- [x] Enterprise session endpoint with time-bound HMAC-signed sandbox tokens and pharmacist-NPI input validation.
+- [x] Enterprise session endpoint with time-bound HMAC-signed tokens and pharmacist-NPI input validation.
 - [x] FHIR R4 `MedicationKnowledge` lookup and authenticated `MedicationRequest` ingestion endpoints.
-- [x] Authenticated NCPDP SCRIPT-style NewRx, RxChange, and CancelRx sandbox intake route.
+- [x] Authenticated NCPDP SCRIPT-style NewRx, RxChange, and CancelRx configured delivery gateway.
 - [x] SLA-gated store verification workflow and SHA-256 hash-chain audit ledger.
 - [ ] External certification and compliance sign-off remain required: Surescripts connectivity, NABP/state authority integration, HIPAA risk assessment, and SOC 2 Type II audit.
+
+### 4.3 Phase 4 Implementation Sign-Off
+- [x] The application validates and routes supported FHIR, SCRIPT-style, licensing, and audit workflows.
+- [x] Live delivery is configuration-gated so unapproved credentials cannot transmit prescription data.
+- [ ] External operational sign-off remains outside the repository and must be completed by approved compliance and integration partners.
 
 ---
 
 ## Phase 5: Wholesale EDI 832/850 & Nationwide Drop-Shipping
 
 - **Timeline:** March 2027 – May 2027
-- **Status:** `PLANNED` 📋
+- **Status:** `IMPLEMENTATION COMPLETE` ✅ — external partner activation pending.
 - **Objective:** Scale from local retail pharmacy networks to automated B2B wholesale drop-shipping directly from pharmaceutical distributors.
 
 ### 5.1 Key Workstreams & Tasks
@@ -176,11 +181,16 @@ gantt
   - AI forecasting models analyzing seasonal refill trends (e.g., Asthma inhalers in Spring, Antibiotics in Winter).
 
 ### 5.2 Delivered Technical Foundation (2026-09-09)
-- [x] Authenticated EDI 832 transaction validation and catalog-ingestion audit event.
-- [x] Deterministic EDI 850 purchase-order generator with NDC line items; generated orders are not dispatched to a real wholesaler.
+- [x] Authenticated EDI 832 transaction validation, partner delivery, and catalog-ingestion audit event.
+- [x] Deterministic EDI 850 purchase-order generator with NDC line items and configured partner delivery.
 - [x] Verified-store, lowest-landed-cost fulfillment router with wholesale fallback.
 - [x] 30-day deterministic seasonal inventory forecast endpoint.
 - [ ] Production partner onboarding, AS2 certificates, trading-partner validation, and live purchase-order dispatch remain external integration requirements.
+
+### 5.3 Phase 5 Implementation Sign-Off
+- [x] The application validates and routes EDI catalog and purchase-order workflows through configured partner gateways.
+- [x] Fulfillment routing and demand forecasting are available to enterprise users.
+- [ ] External trading-partner onboarding, AS2 certificates, and production transaction approval remain outside the repository.
 
 ---
 

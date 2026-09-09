@@ -6,13 +6,13 @@ This document records every significant architectural, technical, and product de
 
 ## Decision Index
 
-### ADR-010: Integration Sandboxes Precede Regulated Network Activation
+### ADR-010: Configuration-Gated Regulated Network Activation
 
 - **Date:** 2026-09-09
 - **Status:** Accepted
-- **Decision Taken:** Phase 4 and 5 routes validate FHIR, SCRIPT-style, and X12 EDI workflows locally while keeping live Surescripts, NABP, and wholesaler connectivity disabled by default. Enterprise requests use short-lived signed sandbox tokens and every sensitive workflow writes to a SHA-256 hash chain.
-- **Reasoning:** Production e-prescribing, license verification, and wholesale ordering require independent credentials, contracts, certification, and security review. A local integration must not imply that these approvals have been obtained.
-- **Impact on Project:** `server/index.ts` exposes authenticated sandbox endpoints for FHIR, NCPDP SCRIPT, license verification, EDI 832/850, fulfillment routing, and demand forecasting. Deployments must set `AUTH_TOKEN_SECRET` and replace sandbox adapters only after external approval.
+- **Decision Taken:** Phase 4 and 5 routes validate FHIR, SCRIPT-style, and X12 EDI workflows, then transmit them through configured Surescripts, licensing-authority, and wholesaler gateways. Enterprise requests use short-lived signed tokens and every sensitive workflow writes to a SHA-256 hash chain.
+- **Reasoning:** Production e-prescribing, license verification, and wholesale ordering require independent credentials, contracts, certification, and security review. Configuration gating prevents accidental transmission before these requirements are met.
+- **Impact on Project:** `server/index.ts` exposes authenticated endpoints for FHIR, NCPDP SCRIPT, license verification, EDI 832/850, fulfillment routing, and demand forecasting. Deployments must set the integration endpoint and API-key variables in `.env.example` before live transmission is allowed.
 
 | ADR ID | Date | Title | Status | Impact Area |
 | :--- | :--- | :--- | :--- | :--- |

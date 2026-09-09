@@ -1,4 +1,4 @@
-import { mockDrugs, mockStores, mockInitialOrder, mockDisputeDossier } from '../src/data/mockData';
+import { mockDrugs, mockStores, mockInitialOrder, mockDisputeDossier } from './mockData';
 
 export interface SeedSummary {
   storesCount: number;

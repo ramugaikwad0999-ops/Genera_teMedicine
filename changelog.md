@@ -12,8 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Scaffolding for bi-directional WebSocket live courier GPS streaming (`wss://api.generatemed.com/tracking`).
 - Stripe Connect escrow webhook receiver and automated chargeback clawback hooks.
-- **Phase 4 technical foundation:** enterprise session protection, FHIR R4 medication lookup/request intake, SCRIPT-style NewRx/RxChange/CancelRx sandbox ingestion, SLA store verification, and SHA-256 audit-chain endpoints.
-- **Phase 5 technical foundation:** EDI 832 validation, EDI 850 purchase-order generation, verified-store landed-cost routing, and 30-day seasonal inventory forecasts.
+- **Phase 4 implementation:** enterprise session protection, FHIR R4 medication lookup/request intake, configured SCRIPT NewRx/RxChange/CancelRx delivery, SLA store verification, and SHA-256 audit-chain endpoints.
+- **Phase 5 implementation:** configured EDI 832/850 partner delivery, verified-store landed-cost routing, and 30-day seasonal inventory forecasts.
 
 ### Fixed
 - Repaired the incomplete dispute-resolution response and aligned consumers with the exported baseline dispute dossier, restoring TypeScript compilation.

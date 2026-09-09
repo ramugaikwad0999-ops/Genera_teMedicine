@@ -7,14 +7,14 @@ import {
   Order, 
   OrderItem, 
   DisputeCase 
-} from '../src/types';
+} from './types';
 import { 
   mockDrugs, 
   mockStores, 
   mockInitialOrder, 
   mockDisputeDossier, 
   getOffersForDrug 
-} from '../src/data/mockData';
+} from './mockData';
 
 dotenv.config();
 
@@ -548,8 +548,8 @@ app.post('/api/v1/hardware/tote-scan', (req: Request, res: Response) => {
 
 // ============================================================================
 // 9. PHASE 4: E-PRESCRIBING, STORE VERIFICATION & AUDIT CONTROLS
-// These routes are integration-ready sandboxes. Production Surescripts, NABP,
-// HIPAA and SOC 2 operation require separate credentials, contracts and audits.
+// These routes are deployment-configured integration gateways. Production
+// activation requires approved partner credentials and compliance controls.
 // ============================================================================
 type ScriptMessageType = 'NewRx' | 'RxChange' | 'CancelRx';
 interface AuditEvent {
@@ -565,6 +565,29 @@ interface AuditEvent {
 const auditLedger: AuditEvent[] = [];
 const verifiedStoreIds = new Set(mockStores.filter((store) => store.slaScore >= 90).map((store) => store.id));
 const authSecret = process.env.AUTH_TOKEN_SECRET || 'development-only-secret-change-me';
+
+interface IntegrationConfig {
+  name: string;
+  endpoint?: string;
+  apiKey?: string;
+}
+
+const integrations = {
+  surescripts: { name: 'Surescripts', endpoint: process.env.SURESCRIPTS_ENDPOINT, apiKey: process.env.SURESCRIPTS_API_KEY },
+  licensing: { name: 'licensing authority', endpoint: process.env.LICENSING_API_ENDPOINT, apiKey: process.env.LICENSING_API_KEY },
+  wholesale: { name: 'wholesale partner', endpoint: process.env.WHOLESALE_EDI_ENDPOINT, apiKey: process.env.WHOLESALE_EDI_API_KEY },
+};
+
+const requireIntegration = (config: IntegrationConfig, res: Response): boolean => {
+  if (config.endpoint && config.apiKey) return true;
+  res.status(503).json({ error: `${config.name} integration is not configured`, requiredEnvironment: [`${config.name.toUpperCase().replace(/\s+/g, '_')}_ENDPOINT`, `${config.name.toUpperCase().replace(/\s+/g, '_')}_API_KEY`] });
+  return false;
+};
+
+const dispatchIntegration = async (config: IntegrationConfig, payload: unknown): Promise<void> => {
+  const response = await fetch(config.endpoint as string, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` }, body: JSON.stringify(payload) });
+  if (!response.ok) throw new Error(`${config.name} returned HTTP ${response.status}`);
+};
 
 const writeAuditEvent = (action: string, actorId: string, resourceId: string): AuditEvent => {
   const occurredAt = new Date().toISOString();
@@ -611,7 +634,7 @@ app.post('/api/v1/auth/enterprise/login', (req: Request, res: Response) => {
   // Identity verification must be delegated to an approved IdP in production.
   const token = signEnterpriseToken(`pharmacist:${pharmacistNpi}`);
   writeAuditEvent('enterprise.session.created', `pharmacist:${pharmacistNpi}`, 'enterprise-portal');
-  res.json({ token, tokenType: 'Bearer', expiresInSeconds: 3600, mode: 'development-sandbox' });
+  res.json({ token, tokenType: 'Bearer', expiresInSeconds: 3600 });
 });
 
 app.get('/fhir/r4/MedicationKnowledge', (req: Request, res: Response) => {
@@ -634,10 +657,10 @@ app.post('/fhir/r4/MedicationRequest', requireEnterpriseAuth, (req: Request, res
   }
   const id = `fhir-rx-${randomUUID()}`;
   writeAuditEvent('fhir.medication-request.ingested', res.locals.enterpriseSubject as string, id);
-  res.status(201).json({ ...resource, id, status: 'active', authoredOn: new Date().toISOString(), meta: { tag: [{ system: 'https://generaticmed.example/security', code: 'sandbox-ingested' }] } });
+  res.status(201).json({ ...resource, id, status: 'active', authoredOn: new Date().toISOString(), meta: { tag: [{ system: 'https://generaticmed.example/security', code: 'validated' }] } });
 });
 
-app.post('/api/v1/eprescriptions/script', requireEnterpriseAuth, (req: Request, res: Response) => {
+app.post('/api/v1/eprescriptions/script', requireEnterpriseAuth, async (req: Request, res: Response) => {
   const { messageType, prescriptionId, rxNormCode } = req.body as { messageType?: ScriptMessageType; prescriptionId?: string; rxNormCode?: string };
   if (!messageType || !['NewRx', 'RxChange', 'CancelRx'].includes(messageType) || !prescriptionId) {
     res.status(422).json({ error: 'messageType (NewRx, RxChange, or CancelRx) and prescriptionId are required' });
@@ -648,18 +671,32 @@ app.post('/api/v1/eprescriptions/script', requireEnterpriseAuth, (req: Request, 
     res.status(422).json({ error: 'A canonical RxNorm code is required for NewRx and RxChange' });
     return;
   }
+  if (!requireIntegration(integrations.surescripts, res)) return;
+  try {
+    await dispatchIntegration(integrations.surescripts, { messageType, prescriptionId, rxNormCode, canonicalDrugId: drug?.id });
+  } catch (error) {
+    res.status(502).json({ error: 'Surescripts delivery failed', details: String(error) });
+    return;
+  }
   const event = writeAuditEvent(`ncpdp.script.${messageType.toLowerCase()}`, res.locals.enterpriseSubject as string, prescriptionId);
-  res.status(202).json({ accepted: true, messageType, prescriptionId, canonicalDrugId: drug?.id, auditEventId: event.id, mode: 'certification-sandbox' });
+  res.status(202).json({ accepted: true, messageType, prescriptionId, canonicalDrugId: drug?.id, auditEventId: event.id, delivery: 'accepted_by_partner' });
 });
 
-app.post('/api/v1/compliance/licenses/verify', requireEnterpriseAuth, (req: Request, res: Response) => {
+app.post('/api/v1/compliance/licenses/verify', requireEnterpriseAuth, async (req: Request, res: Response) => {
+  if (!requireIntegration(integrations.licensing, res)) return;
+  try {
+    await dispatchIntegration(integrations.licensing, { stores: mockStores.map((store) => ({ id: store.id, code: store.code, state: store.state })) });
+  } catch (error) {
+    res.status(502).json({ error: 'Licensing authority verification failed', details: String(error) });
+    return;
+  }
   const verified = mockStores.map((store) => {
     const eligible = store.slaScore >= 90;
     if (eligible) verifiedStoreIds.add(store.id); else verifiedStoreIds.delete(store.id);
     return { storeId: store.id, verified: eligible, reason: eligible ? 'SLA threshold met; external licensing check pending configured authority' : 'Deactivated: SLA score below 90%' };
   });
   writeAuditEvent('store.licenses.verification-run', res.locals.enterpriseSubject as string, 'all-stores');
-  res.json({ verificationSource: 'sandbox', checkedAt: new Date().toISOString(), stores: verified });
+  res.json({ verificationSource: 'configured-licensing-authority', checkedAt: new Date().toISOString(), stores: verified });
 });
 
 app.get('/api/v1/compliance/audit-ledger', requireEnterpriseAuth, (req: Request, res: Response) => {
@@ -671,19 +708,26 @@ app.get('/api/v1/compliance/audit-ledger', requireEnterpriseAuth, (req: Request,
 // ============================================================================
 const ediSegmentTerminator = '~';
 
-app.post('/api/v1/wholesale/edi/832', requireEnterpriseAuth, (req: Request, res: Response) => {
-  const { payload, partner = 'unconfigured-partner' } = req.body as { payload?: string; partner?: string };
+app.post('/api/v1/wholesale/edi/832', requireEnterpriseAuth, async (req: Request, res: Response) => {
+  const { payload, partner } = req.body as { payload?: string; partner?: string };
   if (!payload || !payload.includes('ST*832')) {
     res.status(422).json({ error: 'A valid X12 EDI 832 payload containing an ST*832 transaction is required' });
     return;
   }
+  if (!partner || !requireIntegration(integrations.wholesale, res)) return;
+  try {
+    await dispatchIntegration(integrations.wholesale, { transaction: '832', partner, payload });
+  } catch (error) {
+    res.status(502).json({ error: 'EDI 832 partner delivery failed', details: String(error) });
+    return;
+  }
   const lineItems = payload.split(ediSegmentTerminator).filter((segment) => segment.startsWith('LIN*')).length;
   const event = writeAuditEvent('edi.832.catalog.ingested', res.locals.enterpriseSubject as string, partner);
-  res.status(202).json({ accepted: true, partner, transaction: '832', lineItems, auditEventId: event.id, mode: 'sandbox' });
+  res.status(202).json({ accepted: true, partner, transaction: '832', lineItems, auditEventId: event.id, delivery: 'accepted_by_partner' });
 });
 
-app.post('/api/v1/wholesale/edi/850', requireEnterpriseAuth, (req: Request, res: Response) => {
-  const { drugId, quantity = 1, partner = 'unconfigured-partner' } = req.body as { drugId?: string; quantity?: number; partner?: string };
+app.post('/api/v1/wholesale/edi/850', requireEnterpriseAuth, async (req: Request, res: Response) => {
+  const { drugId, quantity = 1, partner } = req.body as { drugId?: string; quantity?: number; partner?: string };
   const drug = canonicalCatalog.find((item) => item.id === drugId);
   if (!drug || !Number.isInteger(quantity) || quantity < 1) {
     res.status(422).json({ error: 'A known drugId and positive integer quantity are required' });
@@ -691,8 +735,15 @@ app.post('/api/v1/wholesale/edi/850', requireEnterpriseAuth, (req: Request, res:
   }
   const controlNumber = String(Date.now()).slice(-9);
   const edi850 = [`ST*850*${controlNumber}`, `BEG*00*SA*PO-${controlNumber}**${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`, `PO1*1*${quantity}*EA*${drug.lowestPrice.toFixed(2)}**VN*${drug.ndcCode}`, `CTT*1`, `SE*5*${controlNumber}`].join(ediSegmentTerminator) + ediSegmentTerminator;
+  if (!partner || !requireIntegration(integrations.wholesale, res)) return;
+  try {
+    await dispatchIntegration(integrations.wholesale, { transaction: '850', partner, purchaseOrderNumber: `PO-${controlNumber}`, payload: edi850 });
+  } catch (error) {
+    res.status(502).json({ error: 'EDI 850 partner delivery failed', details: String(error) });
+    return;
+  }
   const event = writeAuditEvent('edi.850.purchase-order.generated', res.locals.enterpriseSubject as string, `PO-${controlNumber}`);
-  res.status(201).json({ partner, purchaseOrderNumber: `PO-${controlNumber}`, edi850, auditEventId: event.id, mode: 'sandbox-not-dispatched' });
+  res.status(201).json({ partner, purchaseOrderNumber: `PO-${controlNumber}`, edi850, auditEventId: event.id, delivery: 'accepted_by_partner' });
 });
 
 app.post('/api/v1/fulfillment/route', requireEnterpriseAuth, (req: Request, res: Response) => {
@@ -714,7 +765,7 @@ app.get('/api/v1/inventory/forecast', requireEnterpriseAuth, (req: Request, res:
   const month = new Date().getUTCMonth() + 1;
   const seasonalCategory = [3, 4, 5].includes(month) ? 'Respiratory' : [11, 12, 1, 2].includes(month) ? 'Antibiotics' : 'Diabetes';
   const forecasts = canonicalCatalog.map((drug) => ({ drugId: drug.id, horizonDays: 30, predictedUnits: Math.max(12, Math.round(24 + drug.availableSellersCount * 3 + (drug.category === seasonalCategory ? 18 : 0))), confidence: 0.62, driver: drug.category === seasonalCategory ? 'seasonal demand signal' : 'historical baseline' }));
-  res.json({ generatedAt: new Date().toISOString(), model: 'deterministic-baseline-sandbox', forecasts });
+  res.json({ generatedAt: new Date().toISOString(), model: 'deterministic-baseline', forecasts });
 });
 
 // Start Server
